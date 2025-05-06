@@ -1,0 +1,528 @@
+---
+title: "FormHold"
+author: '02331035'
+date: "2023-07-25"
+output: pdf_document
+---
+
+## Load R packages
+
+Loading `knitr`, `dplyr`, `lubridate`, `xts`, and `data.table` to work with the data.
+```{r Load libraries, message=FALSE, warning=FALSE}
+# Load the required library
+
+#install.packages("FamaFrench")
+#library(FamaFrench)
+library(knitr)
+library(dplyr)
+library(dtplyr)
+library(xts)
+library(data.table)
+library(lubridate)
+library(PerformanceAnalytics)
+library(zoo)
+library(purrr)
+library(tidyr)
+library(RcppRoll)
+library(magrittr)
+library(tibble)
+library(ggplot2)
+library(gridExtra)
+library(writexl)
+library(scales)
+
+```
+
+```{r test}
+
+mom <- merged_data %>% 
+  select(-c(esg_momentum, env_momentum, soc_momentum, gov_momentum)) %>% 
+  group_by(isin) %>%
+  mutate(esg_mom3 = rollapply(total_esg_score, 4, function(x) (x[4] - x[1]) , fill = NA, align = "right"),
+         env_mom3 = rollapply(environment_score, 4, function(x) (x[4] - x[1]) , fill = NA, align = "right"),
+         soc_mom3 = rollapply(social_score, 4, function(x) (x[4] - x[1]) , fill = NA, align = "right"),
+         gov_mom3 = rollapply(governance_score, 4, function(x) (x[4] - x[1]) , fill = NA, align = "right"),
+         p_mom3 = rollapply(monthly_return, 3, function(x) prod(x + 1) - 1, fill = NA, align = "right")
+         ) %>%
+  mutate(esg_mom6 = rollapply(total_esg_score, 7, function(x) (x[7] - x[1]) , fill = NA, align = "right"),
+         env_mom6 = rollapply(environment_score, 7, function(x) (x[7] - x[1]) , fill = NA, align = "right"),
+         soc_mom6 = rollapply(social_score, 7, function(x) (x[7] - x[1]) , fill = NA, align = "right"),
+         gov_mom6 = rollapply(governance_score, 7, function(x) (x[7] - x[1]) , fill = NA, align = "right"),
+         p_mom6 = rollapply(monthly_return, 6, function(x) prod(x + 1) - 1, fill = NA, align = "right")
+         ) %>%
+  mutate(esg_mom12 = rollapply(total_esg_score, 13, function(x) (x[13] - x[1]) , fill = NA, align = "right"),
+         env_mom12 = rollapply(environment_score, 13, function(x) (x[13] - x[1]) , fill = NA, align = "right"),
+         soc_mom12 = rollapply(social_score, 13, function(x) (x[13] - x[1]) , fill = NA, align = "right"),
+         gov_mom12 = rollapply(governance_score, 13, function(x) (x[13] - x[1]) , fill = NA, align = "right"),
+         p_mom12 = rollapply(monthly_return, 12, function(x) prod(x + 1) - 1, fill = NA, align = "right")
+         ) %>%
+  mutate(return_temp = rollapply(monthly_return, 3, function(x) prod(1 + x) - 1, fill = NA, align = "right"),
+         return_3mo = return_temp/3) %>%
+  select(-return_temp) %>% 
+  mutate(return_temp = rollapply(monthly_return, 6, function(x) prod(1 + x) - 1, fill = NA, align = "right"),
+         return_6mo = return_temp/6) %>%
+  select(-return_temp) %>% 
+  mutate(return_temp = rollapply(monthly_return, 12, function(x) prod(1 + x) - 1, fill = NA, align = "right"),
+         return_12mo = return_temp/12) %>%
+  select(-return_temp) %>% 
+  ungroup() %>% 
+  as.data.table()
+
+mom <- mom %>%
+  group_by(monthYear) %>% 
+  mutate(
+    across(c(p_mom3, esg_mom3, env_mom3, soc_mom3, gov_mom3), 
+           ~ if_else(lag(.x, 3) != 0 & !is.na(lag(.x, 3)), ntile(lag(.x, 3), 5), NA_integer_), 
+           .names = "{.col}_q"),
+    across(c(p_mom6, esg_mom6, env_mom6, soc_mom6, gov_mom6), 
+           ~ if_else(lag(.x, 6) != 0 & !is.na(lag(.x, 6)), ntile(lag(.x, 6), 5), NA_integer_), 
+           .names = "{.col}_q"),
+    across(c(p_mom12, esg_mom12, env_mom12, soc_mom12, gov_mom12), 
+           ~ if_else(lag(.x, 12) != 0 & !is.na(lag(.x, 12)), ntile(lag(.x, 12), 5), NA_integer_), 
+           .names = "{.col}_q")
+  ) %>%
+  ungroup() %>% 
+  as.data.table()
+
+```
+
+## Load and prepare data
+
+```{r F3H12}
+
+ret5 <- mom %>% 
+  filter(esg_mom3_q == 5) %>% 
+  group_by(monthYear) %>% 
+  summarise(return =  mean(return_12mo, na.rm = TRUE)) %>% 
+  as.data.table()
+
+ret4 <- mom %>% 
+  filter(esg_mom3_q == 4) %>% 
+  group_by(monthYear) %>% 
+  summarise(return =  mean(return_12mo, na.rm = TRUE)) %>% 
+  as.data.table()
+
+ret3 <- mom %>% 
+  filter(esg_mom3_q == 3) %>% 
+  group_by(monthYear) %>% 
+  summarise(return = mean(return_12mo, na.rm = TRUE)) %>% 
+  as.data.table()
+
+ret2 <- mom %>% 
+  filter(esg_mom3_q == 2) %>% 
+  group_by(monthYear) %>% 
+  summarise(return = mean(return_12mo, na.rm = TRUE)) %>% 
+  as.data.table()
+
+ret1 <- mom %>% 
+  filter(esg_mom3_q == 1) %>% 
+  group_by(monthYear) %>% 
+  summarise(return = mean(return_12mo, na.rm = TRUE)) %>% 
+  as.data.table()
+
+tables_list <- list(ret5, ret4, ret3, ret2, ret1)
+
+# Perform a full join for all tables based on the monthYear column
+mom_ret <- reduce(tables_list, full_join, by = "monthYear") %>% 
+  as.data.table()
+
+mom_ret_F3H12 <- mom_ret %>%
+  rename_at(vars(2:6), ~ c("top20", "4", "3", "2", "bottom20")) %>% 
+  as.data.table()
+
+rm(ret1, ret2, ret3, ret4, ret5, tables_list)
+
+```
+
+```{r F3H3}
+
+ret5 <- mom %>% 
+  filter(esg_mom3_q == 5) %>% 
+  group_by(monthYear) %>% 
+  summarise(return = mean(return_3mo, na.rm = TRUE)) %>% 
+  as.data.table()
+
+ret4 <- mom %>% 
+  filter(esg_mom3_q == 4) %>% 
+  group_by(monthYear) %>% 
+  summarise(return = mean(return_3mo, na.rm = TRUE)) %>% 
+  as.data.table()
+
+ret3 <- mom %>% 
+  filter(esg_mom3_q == 3) %>% 
+  group_by(monthYear) %>% 
+  summarise(return = mean(return_3mo, na.rm = TRUE)) %>% 
+  as.data.table()
+
+ret2 <- mom %>% 
+  filter(esg_mom3_q == 2) %>% 
+  group_by(monthYear) %>% 
+  summarise(return = mean(return_3mo, na.rm = TRUE)) %>% 
+  as.data.table()
+
+ret1 <- mom %>% 
+  filter(esg_mom3_q == 1) %>% 
+  group_by(monthYear) %>% 
+  summarise(return = mean(return_3mo, na.rm = TRUE)) %>% 
+  as.data.table()
+
+tables_list <- list(ret5, ret4, ret3, ret2, ret1)
+
+# Perform a full join for all tables based on the monthYear column
+mom_ret <- reduce(tables_list, full_join, by = "monthYear") %>% 
+  as.data.table()
+
+mom_ret_F3H3 <- mom_ret %>%
+  rename_at(vars(2:6), ~ c("top20", "4", "3", "2", "bottom20")) %>% 
+  as.data.table()
+
+rm( ret1, ret2, ret3, ret4, ret5, tables_list)
+
+```
+
+```{r F3H6}
+
+ret5 <- mom %>% 
+  filter(esg_mom3_q == 5) %>% 
+  group_by(monthYear) %>% 
+  summarise(return = mean(return_6mo, na.rm = TRUE)) %>% 
+  as.data.table()
+
+ret4 <- mom %>% 
+  filter(esg_mom3_q == 4) %>% 
+  group_by(monthYear) %>% 
+  summarise(return = mean(return_6mo, na.rm = TRUE)) %>% 
+  as.data.table()
+
+ret3 <- mom %>% 
+  filter(esg_mom3_q == 3) %>% 
+  group_by(monthYear) %>% 
+  summarise(return = mean(return_6mo, na.rm = TRUE)) %>% 
+  as.data.table()
+
+ret2 <- mom %>% 
+  filter(esg_mom3_q == 2) %>% 
+  group_by(monthYear) %>% 
+  summarise(return = mean(return_6mo, na.rm = TRUE)) %>% 
+  as.data.table()
+
+ret1 <- mom %>% 
+  filter(esg_mom3_q == 1) %>% 
+  group_by(monthYear) %>% 
+  summarise(return = mean(return_6mo, na.rm = TRUE)) %>% 
+  as.data.table()
+
+tables_list <- list(ret5, ret4, ret3, ret2, ret1)
+
+# Perform a full join for all tables based on the monthYear column
+mom_ret <- reduce(tables_list, full_join, by = "monthYear") %>% 
+  as.data.table()
+
+mom_ret_F3H6 <- mom_ret %>%
+  rename_at(vars(2:6), ~ c("top20", "4", "3", "2", "bottom20")) %>% 
+  as.data.table()
+
+rm( ret1, ret2, ret3, ret4, ret5, tables_list)
+
+```
+
+
+```{r F6H12}
+
+ret5 <- mom %>% 
+  filter(esg_mom6_q == 5) %>% 
+  group_by(monthYear) %>% 
+  summarise(return = mean(return_12mo, na.rm = TRUE)) %>% 
+  as.data.table()
+
+ret4 <- mom %>% 
+  filter(esg_mom6_q == 4) %>% 
+  group_by(monthYear) %>% 
+  summarise(return = mean(return_12mo, na.rm = TRUE)) %>% 
+  as.data.table()
+
+ret3 <- mom %>% 
+  filter(esg_mom6_q == 3) %>% 
+  group_by(monthYear) %>% 
+  summarise(return = mean(return_12mo, na.rm = TRUE)) %>% 
+  as.data.table()
+
+ret2 <- mom %>% 
+  filter(esg_mom6_q == 2) %>% 
+  group_by(monthYear) %>% 
+  summarise(return = mean(return_12mo, na.rm = TRUE)) %>% 
+  as.data.table()
+
+ret1 <- mom %>% 
+  filter(esg_mom6_q == 1) %>% 
+  group_by(monthYear) %>% 
+  summarise(return = mean(return_12mo, na.rm = TRUE)) %>% 
+  as.data.table()
+
+tables_list <- list(ret5, ret4, ret3, ret2, ret1)
+
+# Perform a full join for all tables based on the monthYear column
+mom_ret <- reduce(tables_list, full_join, by = "monthYear") %>% 
+  as.data.table()
+
+mom_ret_F6H12 <- mom_ret %>%
+  rename_at(vars(2:6), ~ c("top20", "4", "3", "2", "bottom20")) %>% 
+  as.data.table()
+
+rm( ret1, ret2, ret3, ret4, ret5, tables_list)
+
+```
+
+```{r F6H3}
+
+ret5 <- mom %>% 
+  filter(esg_mom6_q == 5) %>% 
+  group_by(monthYear) %>% 
+  summarise(return = mean(return_3mo, na.rm = TRUE)) %>% 
+  as.data.table()
+
+ret4 <- mom %>% 
+  filter(esg_mom6_q == 4) %>% 
+  group_by(monthYear) %>% 
+  summarise(return = mean(return_3mo, na.rm = TRUE)) %>% 
+  as.data.table()
+
+ret3 <- mom %>% 
+  filter(esg_mom6_q == 3) %>% 
+  group_by(monthYear) %>% 
+  summarise(return = mean(return_3mo, na.rm = TRUE)) %>% 
+  as.data.table()
+
+ret2 <- mom %>% 
+  filter(esg_mom6_q == 2) %>% 
+  group_by(monthYear) %>% 
+  summarise(return = mean(return_3mo, na.rm = TRUE)) %>% 
+  as.data.table()
+
+ret1 <- mom %>% 
+  filter(esg_mom6_q == 1) %>% 
+  group_by(monthYear) %>% 
+  summarise(return = mean(return_3mo, na.rm = TRUE)) %>% 
+  as.data.table()
+
+tables_list <- list(ret5, ret4, ret3, ret2, ret1)
+
+# Perform a full join for all tables based on the monthYear column
+mom_ret <- reduce(tables_list, full_join, by = "monthYear") %>% 
+  as.data.table()
+
+mom_ret_F6H3 <- mom_ret %>%
+  rename_at(vars(2:6), ~ c("top20", "4", "3", "2", "bottom20")) %>% 
+  as.data.table()
+
+rm( ret1, ret2, ret3, ret4, ret5, tables_list)
+
+```
+
+```{r F6H6}
+
+ret5 <- mom %>% 
+  filter(esg_mom6_q == 5) %>% 
+  group_by(monthYear) %>% 
+  summarise(return = mean(return_6mo, na.rm = TRUE)) %>% 
+  as.data.table()
+
+ret4 <- mom %>% 
+  filter(esg_mom6_q == 4) %>% 
+  group_by(monthYear) %>% 
+  summarise(return = mean(return_6mo, na.rm = TRUE)) %>% 
+  as.data.table()
+
+ret3 <- mom %>% 
+  filter(esg_mom6_q == 3) %>% 
+  group_by(monthYear) %>% 
+  summarise(return = mean(return_6mo, na.rm = TRUE)) %>% 
+  as.data.table()
+
+ret2 <- mom %>% 
+  filter(esg_mom6_q == 2) %>% 
+  group_by(monthYear) %>% 
+  summarise(return = mean(return_6mo, na.rm = TRUE)) %>% 
+  as.data.table()
+
+ret1 <- mom %>% 
+  filter(esg_mom6_q == 1) %>% 
+  group_by(monthYear) %>% 
+  summarise(return = mean(return_6mo, na.rm = TRUE)) %>% 
+  as.data.table()
+
+tables_list <- list(ret5, ret4, ret3, ret2, ret1)
+
+# Perform a full join for all tables based on the monthYear column
+mom_ret <- reduce(tables_list, full_join, by = "monthYear") %>% 
+  as.data.table()
+
+mom_ret_F6H6 <- mom_ret %>%
+  rename_at(vars(2:6), ~ c("top20", "4", "3", "2", "bottom20")) %>% 
+  as.data.table()
+
+rm( ret1, ret2, ret3, ret4, ret5, tables_list)
+
+```
+
+```{r F12H12}
+
+ret5 <- mom %>% 
+  filter(esg_mom12_q == 5) %>% 
+  group_by(monthYear) %>% 
+  summarise(return = mean(return_12mo, na.rm = TRUE)) %>% 
+  as.data.table()
+
+ret4 <- mom %>% 
+  filter(esg_mom12_q == 4) %>% 
+  group_by(monthYear) %>% 
+  summarise(return = mean(return_12mo, na.rm = TRUE)) %>% 
+  as.data.table()
+
+ret3 <- mom %>% 
+  filter(esg_mom12_q == 3) %>% 
+  group_by(monthYear) %>% 
+  summarise(return = mean(return_12mo, na.rm = TRUE)) %>% 
+  as.data.table()
+
+ret2 <- mom %>% 
+  filter(esg_mom12_q == 2) %>% 
+  group_by(monthYear) %>% 
+  summarise(return = mean(return_12mo, na.rm = TRUE)) %>% 
+  as.data.table()
+
+ret1 <- mom %>% 
+  filter(esg_mom12_q == 1) %>% 
+  group_by(monthYear) %>% 
+  summarise(return = mean(return_12mo, na.rm = TRUE)) %>% 
+  as.data.table()
+
+tables_list <- list(ret5, ret4, ret3, ret2, ret1)
+
+# Perform a full join for all tables based on the monthYear column
+mom_ret <- reduce(tables_list, full_join, by = "monthYear") %>% 
+  as.data.table()
+
+mom_ret_F12H12 <- mom_ret %>%
+  rename_at(vars(2:6), ~ c("top20", "4", "3", "2", "bottom20")) %>% 
+  as.data.table()
+
+rm( ret1, ret2, ret3, ret4, ret5, tables_list)
+
+```
+
+
+```{r F12H3}
+
+ret5 <- mom %>% 
+  filter(esg_mom12_q == 5) %>% 
+  group_by(monthYear) %>% 
+  summarise(return = mean(return_3mo, na.rm = TRUE)) %>% 
+  as.data.table()
+
+ret4 <- mom %>% 
+  filter(esg_mom12_q == 4) %>% 
+  group_by(monthYear) %>% 
+  summarise(return = mean(return_3mo, na.rm = TRUE)) %>% 
+  as.data.table()
+
+ret3 <- mom %>% 
+  filter(esg_mom12_q == 3) %>% 
+  group_by(monthYear) %>% 
+  summarise(return = mean(return_3mo, na.rm = TRUE)) %>% 
+  as.data.table()
+
+ret2 <- mom %>% 
+  filter(esg_mom12_q == 2) %>% 
+  group_by(monthYear) %>% 
+  summarise(return = mean(return_3mo, na.rm = TRUE)) %>% 
+  as.data.table()
+
+ret1 <- mom %>% 
+  filter(esg_mom12_q == 1) %>% 
+  group_by(monthYear) %>% 
+  summarise(return = mean(return_3mo, na.rm = TRUE)) %>% 
+  as.data.table()
+
+tables_list <- list(ret5, ret4, ret3, ret2, ret1)
+
+# Perform a full join for all tables based on the monthYear column
+mom_ret <- reduce(tables_list, full_join, by = "monthYear") %>% 
+  as.data.table()
+
+mom_ret_F12H3 <- mom_ret %>%
+  rename_at(vars(2:6), ~ c("top20", "4", "3", "2", "bottom20")) %>% 
+  as.data.table()
+
+rm( ret1, ret2, ret3, ret4, ret5, tables_list)
+
+```
+
+```{r F12H6}
+
+ret5 <- mom %>% 
+  filter(esg_mom12_q == 5) %>% 
+  group_by(monthYear) %>% 
+  summarise(return = mean(return_6mo, na.rm = TRUE)) %>% 
+  as.data.table()
+
+ret4 <- mom %>% 
+  filter(esg_mom12_q == 4) %>% 
+  group_by(monthYear) %>% 
+  summarise(return = mean(return_6mo, na.rm = TRUE)) %>% 
+  as.data.table()
+
+ret3 <- mom %>% 
+  filter(esg_mom12_q == 3) %>% 
+  group_by(monthYear) %>% 
+  summarise(return = mean(return_6mo, na.rm = TRUE)) %>% 
+  as.data.table()
+
+ret2 <- mom %>% 
+  filter(esg_mom12_q == 2) %>% 
+  group_by(monthYear) %>% 
+  summarise(return = mean(return_6mo, na.rm = TRUE)) %>% 
+  as.data.table()
+
+ret1 <- mom %>% 
+  filter(esg_mom12_q == 1) %>% 
+  group_by(monthYear) %>% 
+  summarise(return = mean(return_6mo, na.rm = TRUE)) %>% 
+  as.data.table()
+
+tables_list <- list(ret5, ret4, ret3, ret2, ret1)
+
+# Perform a full join for all tables based on the monthYear column
+mom_ret <- reduce(tables_list, full_join, by = "monthYear") %>% 
+  as.data.table()
+
+mom_ret_F12H6 <- mom_ret %>%
+  rename_at(vars(2:6), ~ c("top20", "4", "3", "2", "bottom20")) %>% 
+  as.data.table()
+
+rm( ret1, ret2, ret3, ret4, ret5, tables_list)
+
+```
+
+```{r save}
+
+saveRDS(mom_ret_F12H6, "socmom3_ret_F12H6.RData")
+saveRDS(mom_ret_F12H3, "socmom3_ret_F12H3.RData")
+saveRDS(mom_ret_F12H12, "socmom3_ret_F12H12.RData")
+
+saveRDS(mom_ret_F6H6, "socmom3_ret_F6H6.RData")
+saveRDS(mom_ret_F6H3, "socmom3_ret_F6H3.RData")
+saveRDS(mom_ret_F6H12, "socmom3_ret_F6H12.RData")
+
+saveRDS(mom_ret_F3H6, "socmom3_ret_F3H6.RData")
+saveRDS(mom_ret_F3H3, "socmom3_ret_F3H3.RData")
+saveRDS(mom_ret_F3H12, "socmom3_ret_F3H12.RData")
+
+```
+
+```{r end}
+
+
+
+```
+
