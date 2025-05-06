@@ -3,8 +3,6 @@ title: |
   | Applied Project
 author: | 
   | Name: Luqman Nasir
-  | CID: 02304617
-  | Business School, Imperial College London
 date: "15-08-2023"
 output: pdf_document
 ---
@@ -36,37 +34,6 @@ library(gridExtra)
 library(writexl)
 library(scales)
 library(summarytools)
-
-```
-
-```{r Load prccd dataset, message=FALSE, warning=FALSE, tidy=TRUE}
-
-#dprice_data <- fread('compustat1.csv')
-
-#dprice_data <- subset(dprice_data, !is.na(isin) & isin != "") #!is.na(prccd) & prccd != "" & 
-#length(unique(dprice_data$isin))
-#tail(dprice_data)
-
-## Filtering first and last day of each month
-#dprice_data <- dprice_data %>%
-  #mutate(monthYear = format(datadate, "%Y-%m")) %>% 
-  #ungroup() %>%
-  #as.data.table()
-
-#dprice_data <- dprice_data %>%
-  #group_by(isin, monthYear) %>% 
-  #mutate(first_day_price = first(prccd), last_day_price = last(prccd), monthly_return = (last_day_price - #first_day_price) / first_day_price) %>%
-  #select(-c(first_day_price, last_day_price)) %>% 
-  #as.data.table()
-
-#dprice_data$monthly_return[is.infinite(dprice_data$monthly_return )] <- NA
-#dprice_data$monthly_return[(dprice_data$price == 0 )] <- NA
-#dprice_data$datadate <- as.Date(dprice_data$datadate, format = "%Y-%m-%d", origin = "1970-01-01")
-
-#output_file <- "dprice_data.RData"
-
-#Save the dprice_data dataframe in R's native file format
-#saveRDS(dprice_data, file = output_file)
 
 ```
 
