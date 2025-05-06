@@ -1,6 +1,6 @@
 ---
-title: "FormHold"
-author: '02331035'
+title: "Formation and Holding Period"
+author: Luqman Nasir
 date: "2023-07-25"
 output: pdf_document
 ---
