@@ -1,0 +1,375 @@
+---
+title: "AP3"
+author: "Luqman Nasir"
+date: "2023-08-01"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+
+mom <- merged_data %>% 
+  select(-c(esg_momentum, env_momentum, soc_momentum, gov_momentum)) %>% 
+  group_by(isin) %>%
+  mutate(esg_mom3 = rollapply(total_esg_score, 4, function(x) (x[4] - x[1]) , fill = NA, align = "right"),
+         env_mom3 = rollapply(environment_score, 4, function(x) (x[4] - x[1]) , fill = NA, align = "right"),
+         soc_mom3 = rollapply(social_score, 4, function(x) (x[4] - x[1]) , fill = NA, align = "right"),
+         gov_mom3 = rollapply(governance_score, 4, function(x) (x[4] - x[1]) , fill = NA, align = "right"),
+         p_mom3 = rollapply(monthly_return, 3, function(x) prod(x + 1) - 1, fill = NA, align = "right")
+         ) %>%
+  mutate(esg_mom6 = rollapply(total_esg_score, 7, function(x) (x[7] - x[1]) , fill = NA, align = "right"),
+         env_mom6 = rollapply(environment_score, 7, function(x) (x[7] - x[1]) , fill = NA, align = "right"),
+         soc_mom6 = rollapply(social_score, 7, function(x) (x[7] - x[1]) , fill = NA, align = "right"),
+         gov_mom6 = rollapply(governance_score, 7, function(x) (x[7] - x[1]) , fill = NA, align = "right"),
+         p_mom6 = rollapply(monthly_return, 6, function(x) prod(x + 1) - 1, fill = NA, align = "right")
+         ) %>%
+  mutate(esg_mom12 = rollapply(total_esg_score, 13, function(x) (x[13] - x[1]) , fill = NA, align = "right"),
+         env_mom12 = rollapply(environment_score, 13, function(x) (x[13] - x[1]) , fill = NA, align = "right"),
+         soc_mom12 = rollapply(social_score, 13, function(x) (x[13] - x[1]) , fill = NA, align = "right"),
+         gov_mom12 = rollapply(governance_score, 13, function(x) (x[13] - x[1]) , fill = NA, align = "right"),
+         p_mom12 = rollapply(monthly_return, 12, function(x) prod(x + 1) - 1, fill = NA, align = "right")
+         ) %>%
+  mutate(return_temp = rollapply(monthly_return, 3, function(x) prod(1 + x) - 1, fill = NA, align = "right"),
+         return_3mo = return_temp/3) %>%
+  select(-return_temp) %>% 
+  mutate(return_temp = rollapply(monthly_return, 6, function(x) prod(1 + x) - 1, fill = NA, align = "right"),
+         return_6mo = return_temp/6) %>%
+  select(-return_temp) %>% 
+  mutate(return_temp = rollapply(monthly_return, 12, function(x) prod(1 + x) - 1, fill = NA, align = "right"),
+         return_12mo = return_temp/12) %>%
+  select(-return_temp) %>% 
+  ungroup() %>% 
+  as.data.table()
+
+```
+
+```{r F3H3}
+
+# Filter out rows with 0 and NA values in the mom_column_name
+
+momtemp <- mom %>%
+  filter(gov_mom3 != 0 & !is.na(soc_mom3)) %>%
+  as.data.table()
+
+# Calculate the quintiles for the mom_column_name based on lagnum
+momtemp <- momtemp %>%
+  group_by(monthYear) %>%
+  mutate(quint = ntile(lag(soc_mom3, 3), 5)) %>%
+  ungroup() %>%
+  as.data.table()
+
+# Calculate the mean return for each quintile
+ret <- momtemp %>%
+  group_by(monthYear, quint) %>%
+  summarise(return = mean(return_3mo, na.rm = TRUE)) %>%
+  filter(!is.na(quint)) %>% 
+  as.data.table()
+
+# Reshape the result using dcast
+ret <- dcast(ret, monthYear ~ quint, value.var = "return")
+
+# Rename the columns
+colnames(ret)[-1] <- c("bottom20", "2", "3", "4", "top20")
+
+mom3_ret_F3H3 <- ret
+
+rm(momtemp, ret)
+
+
+```
+
+```{r F3H6}
+
+# Filter out rows with 0 and NA values in the mom_column_name
+
+momtemp <- mom %>%
+  filter(gov_mom3 != 0 & !is.na(soc_mom3)) %>%
+  as.data.table()
+
+# Calculate the quintiles for the mom_column_name based on lagnum
+momtemp <- momtemp %>%
+  group_by(monthYear) %>%
+  mutate(quint = ntile(lag(soc_mom3, 3), 5)) %>%
+  ungroup() %>%
+  as.data.table()
+
+# Calculate the mean return for each quintile
+ret <- momtemp %>%
+  group_by(monthYear, quint) %>%
+  summarise(return = mean(return_6mo, na.rm = TRUE)) %>%
+  filter(!is.na(quint)) %>% 
+  as.data.table()
+
+# Reshape the result using dcast
+ret <- dcast(ret, monthYear ~ quint, value.var = "return")
+
+# Rename the columns
+colnames(ret)[-1] <- c("bottom20", "2", "3", "4", "top20")
+
+mom3_ret_F3H6 <- ret
+
+rm(momtemp, ret)
+
+
+```
+
+```{r F3H12}
+
+# Filter out rows with 0 and NA values in the mom_column_name
+
+momtemp <- mom %>%
+  filter(gov_mom3 != 0 & !is.na(soc_mom3)) %>%
+  as.data.table()
+
+# Calculate the quintiles for the mom_column_name based on lagnum
+momtemp <- momtemp %>%
+  group_by(monthYear) %>%
+  mutate(quint = ntile(lag(soc_mom3, 3), 5)) %>%
+  ungroup() %>%
+  as.data.table()
+
+# Calculate the mean return for each quintile
+ret <- momtemp %>%
+  group_by(monthYear, quint) %>%
+  summarise(return = mean(return_12mo, na.rm = TRUE)) %>%
+  filter(!is.na(quint)) %>% 
+  as.data.table()
+
+# Reshape the result using dcast
+ret <- dcast(ret, monthYear ~ quint, value.var = "return")
+
+# Rename the columns
+colnames(ret)[-1] <- c("bottom20", "2", "3", "4", "top20")
+
+mom3_ret_F3H12 <- ret
+
+rm(momtemp, ret)
+
+
+```
+
+
+```{r F6H3}
+
+# Filter out rows with 0 and NA values in the mom_column_name
+
+momtemp <- mom %>%
+  filter(gov_mom6 != 0 & !is.na(soc_mom6)) %>%
+  as.data.table()
+
+# Calculate the quintiles for the mom_column_name based on lagnum
+momtemp <- momtemp %>%
+  group_by(monthYear) %>%
+  mutate(quint = ntile(lag(soc_mom6, 6), 5)) %>%
+  ungroup() %>%
+  as.data.table()
+
+# Calculate the mean return for each quintile
+ret <- momtemp %>%
+  group_by(monthYear, quint) %>%
+  summarise(return = mean(return_3mo, na.rm = TRUE)) %>%
+  filter(!is.na(quint)) %>% 
+  as.data.table()
+
+# Reshape the result using dcast
+ret <- dcast(ret, monthYear ~ quint, value.var = "return")
+
+# Rename the columns
+colnames(ret)[-1] <- c("bottom20", "2", "3", "4", "top20")
+
+mom3_ret_F6H3 <- ret
+
+rm(momtemp, ret)
+
+
+```
+```{r F6H6}
+
+# Filter out rows with 0 and NA values in the mom_column_name
+
+momtemp <- mom %>%
+  filter(gov_mom6 != 0 & !is.na(soc_mom6)) %>%
+  as.data.table()
+
+# Calculate the quintiles for the mom_column_name based on lagnum
+momtemp <- momtemp %>%
+  group_by(monthYear) %>%
+  mutate(quint = ntile(lag(soc_mom6, 6), 5)) %>%
+  ungroup() %>%
+  as.data.table()
+
+# Calculate the mean return for each quintile
+ret <- momtemp %>%
+  group_by(monthYear, quint) %>%
+  summarise(return = mean(return_6mo, na.rm = TRUE)) %>%
+  filter(!is.na(quint)) %>% 
+  as.data.table()
+
+# Reshape the result using dcast
+ret <- dcast(ret, monthYear ~ quint, value.var = "return")
+
+# Rename the columns
+colnames(ret)[-1] <- c("bottom20", "2", "3", "4", "top20")
+
+mom3_ret_F6H6 <- ret
+
+rm(momtemp, ret)
+
+
+```
+```{r F6H12}
+
+# Filter out rows with 0 and NA values in the mom_column_name
+
+momtemp <- mom %>%
+  filter(gov_mom6 != 0 & !is.na(soc_mom6)) %>%
+  as.data.table()
+
+# Calculate the quintiles for the mom_column_name based on lagnum
+momtemp <- momtemp %>%
+  group_by(monthYear) %>%
+  mutate(quint = ntile(lag(soc_mom6, 6), 5)) %>%
+  ungroup() %>%
+  as.data.table()
+
+# Calculate the mean return for each quintile
+ret <- momtemp %>%
+  group_by(monthYear, quint) %>%
+  summarise(return = mean(return_12mo, na.rm = TRUE)) %>%
+  filter(!is.na(quint)) %>% 
+  as.data.table()
+
+# Reshape the result using dcast
+ret <- dcast(ret, monthYear ~ quint, value.var = "return")
+
+# Rename the columns
+colnames(ret)[-1] <- c("bottom20", "2", "3", "4", "top20")
+
+mom3_ret_F6H12 <- ret
+
+rm(momtemp, ret)
+
+
+```
+```{r F12H3}
+
+# Filter out rows with 0 and NA values in the mom_column_name
+
+momtemp <- mom %>%
+  filter(gov_mom12 != 0 & !is.na(soc_mom12)) %>%
+  as.data.table()
+
+# Calculate the quintiles for the mom_column_name based on lagnum
+momtemp <- momtemp %>%
+  group_by(monthYear) %>%
+  mutate(quint = ntile(lag(soc_mom12, 12), 5)) %>%
+  ungroup() %>%
+  as.data.table()
+
+# Calculate the mean return for each quintile
+ret <- momtemp %>%
+  group_by(monthYear, quint) %>%
+  summarise(return = mean(return_3mo, na.rm = TRUE)) %>%
+  filter(!is.na(quint)) %>% 
+  as.data.table()
+
+# Reshape the result using dcast
+ret <- dcast(ret, monthYear ~ quint, value.var = "return")
+
+# Rename the columns
+colnames(ret)[-1] <- c("bottom20", "2", "3", "4", "top20")
+
+mom3_ret_F12H3 <- ret
+
+rm(momtemp, ret)
+
+
+```
+
+```{r F12H6}
+
+# Filter out rows with 0 and NA values in the mom_column_name
+
+momtemp <- mom %>%
+  filter(gov_mom12 != 0 & !is.na(soc_mom12)) %>%
+  as.data.table()
+
+# Calculate the quintiles for the mom_column_name based on lagnum
+momtemp <- momtemp %>%
+  group_by(monthYear) %>%
+  mutate(quint = ntile(lag(soc_mom12, 12), 5)) %>%
+  ungroup() %>%
+  as.data.table()
+
+# Calculate the mean return for each quintile
+ret <- momtemp %>%
+  group_by(monthYear, quint) %>%
+  summarise(return = mean(return_6mo, na.rm = TRUE)) %>%
+  filter(!is.na(quint)) %>% 
+  as.data.table()
+
+# Reshape the result using dcast
+ret <- dcast(ret, monthYear ~ quint, value.var = "return")
+
+# Rename the columns
+colnames(ret)[-1] <- c("bottom20", "2", "3", "4", "top20")
+
+mom3_ret_F12H6 <- ret
+
+rm(momtemp, ret)
+
+
+```
+
+```{r F12H12}
+
+# Filter out rows with 0 and NA values in the mom_column_name
+
+momtemp <- mom %>%
+  filter(gov_mom12 != 0 & !is.na(soc_mom12)) %>%
+  as.data.table()
+
+# Calculate the quintiles for the mom_column_name based on lagnum
+momtemp <- momtemp %>%
+  group_by(monthYear) %>%
+  mutate(quint = ntile(lag(soc_mom12, 12), 5)) %>%
+  ungroup() %>%
+  as.data.table()
+
+# Calculate the mean return for each quintile
+ret <- momtemp %>%
+  group_by(monthYear, quint) %>%
+  summarise(return = mean(return_12mo, na.rm = TRUE)) %>%
+  filter(!is.na(quint)) %>% 
+  as.data.table()
+
+# Reshape the result using dcast
+ret <- dcast(ret, monthYear ~ quint, value.var = "return")
+
+# Rename the columns
+colnames(ret)[-1] <- c("bottom20", "2", "3", "4", "top20")
+
+mom3_ret_F12H12 <- ret
+
+rm(momtemp, ret)
+
+```
+
+```{r save}
+
+saveRDS(mom3_ret_F12H6, "socmom3_ret_F12H6.RData")
+saveRDS(mom3_ret_F12H3, "socmom3_ret_F12H3.RData")
+saveRDS(mom3_ret_F12H12, "socmom3_ret_F12H12.RData")
+
+saveRDS(mom3_ret_F6H6, "socmom3_ret_F6H6.RData")
+saveRDS(mom3_ret_F6H3, "socmom3_ret_F6H3.RData")
+saveRDS(mom3_ret_F6H12, "socmom3_ret_F6H12.RData")
+
+saveRDS(mom3_ret_F3H6, "socmom3_ret_F3H6.RData")
+saveRDS(mom3_ret_F3H3, "socmom3_ret_F3H3.RData")
+saveRDS(mom3_ret_F3H12, "socmom3_ret_F3H12.RData")
+
+```
+
+```{r end}
+
+```

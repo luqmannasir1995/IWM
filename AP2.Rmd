@@ -1,0 +1,296 @@
+---
+title: |
+  | Financial Econometrics
+  | Group Assignment
+author: | 
+  | CID: 02304617
+  | Business School, Imperial College London
+date: "24-06-2023"
+output: pdf_document
+---
+
+\newpage
+\tableofcontents
+\listoftables
+\listoffigures
+\newpage
+
+
+```{r load mom}
+
+mom_ret_F12H6 <- readRDS("mom3_ret_F12H6.RData")
+mom_ret_F12H3 <- readRDS("mom3_ret_F12H3.RData")
+mom_ret_F12H12 <- readRDS("mom3_ret_F12H12.RData")
+
+mom_ret_F6H6 <- readRDS("mom3_ret_F6H6.RData")
+mom_ret_F6H3 <- readRDS("mom3_ret_F6H3.RData")
+mom_ret_F6H12 <- readRDS("mom3_ret_F6H12.RData")
+
+mom_ret_F3H6 <- readRDS("mom3_ret_F3H6.RData")
+mom_ret_F3H3 <- readRDS("mom3_ret_F3H3.RData")
+mom_ret_F3H12 <- readRDS("mom3_ret_F3H12.RData")
+
+replace_na_with_zero <- function(x) {
+  ifelse(is.na(x), 0, x)
+}
+
+table_list <- list(
+  mom_ret_F3H3,
+  mom_ret_F3H6,
+  mom_ret_F3H12,
+    
+  mom_ret_F6H3,
+  mom_ret_F6H6,
+  mom_ret_F6H12,
+    
+  mom_ret_F12H3,
+  mom_ret_F12H6,
+  mom_ret_F12H12
+)
+
+```
+
+```{r mom average}
+
+compile <- function(table_list) {
+  result_list <- lapply(table_list, function(data) {
+    # Calculate mean and convert to data.table for each table in the list
+    data <- merge(data, fama5_data[, .(monthYear, rf)],
+                  by = "monthYear", all.x = TRUE)
+    
+    temp <- data %>%
+      select(-monthYear) %>%
+      mutate(across(everything(), ~ . - rf)) %>% 
+      mutate(topbottom = top20 - bottom20) %>% 
+      select(-rf) %>% 
+      summarise(across(everything(), mean, na.rm = TRUE)) %>% 
+      as.data.table()
+    
+    return(temp)
+  })
+  
+  # Combine the rows of all data.tables in the result_list using rbindlist
+  result <- rbindlist(result_list)
+  
+  return(result)
+}
+
+# Assuming you have the list of tables 'table_list' available
+# Call the function and pass the list of tables as an argument
+result <- compile(table_list)
+
+```
+
+
+```{r regression}
+
+# Function to compile regression results
+compile_regression_results <- function(data) {
+  data[, names(data) := lapply(.SD, function(x) replace(x, x == 0, NA)), .SDcols = names(data)]
+  
+  data <- merge(data, fama5_data[, .(monthYear, mktrf, rf, smb, hml)], by = "monthYear", all.x = TRUE)
+  
+  data <- data %>% 
+    mutate(topminusbottom = top20 - bottom20 - rf) %>%
+    as.data.table()
+  
+  model <- lm(topminusbottom ~ mktrf + smb + hml, data = data)
+  
+  coefficients <- summary(model)$coefficients[, "Estimate"]
+  std_errors <- summary(model)$coefficients[, "Std. Error"]
+  adjusted_r_squared <- summary(model)$adj.r.squared
+  
+  # Combine coefficients, standard errors, and adjusted R-squared into a data.table
+  regression_table <- data.table(Coefficient = coefficients, `Standard Error` = std_errors, `Adjusted R-squared` = adjusted_r_squared)
+  
+  return(regression_table)
+}
+
+# Assuming you have the list of tables 'table_list' available
+# Create an empty list to store the results
+regression_results_list <- list()
+
+# Loop through each table in the 'table_list' and apply the function to compile regression results
+for (data in table_list) {
+  regression_result <- compile_regression_results(data)
+  regression_results_list <- c(regression_results_list, list(regression_result))
+}
+
+# Combine the results for all tables into a single data.table using rbindlist
+final_regression_results <- rbindlist(regression_results_list)
+
+```
+
+```{r regression 2}
+
+# Function to compile regression results
+compile_regression_results <- function(data) {
+  data[, names(data) := lapply(.SD, function(x) replace(x, x == 0, NA)), .SDcols = names(data)]
+  
+  data <- merge(data, fama5_data[, .(monthYear, mktrf, rf, smb, hml)], by = "monthYear", all.x = TRUE)
+  
+  data <- data %>% 
+    mutate(topminusbottom = top20 - bottom20 - rf) %>% 
+    as.data.table()
+  
+  model <- lm(topminusbottom ~ mktrf, data = data)
+  
+  coefficients <- summary(model)$coefficients[, "Estimate"]
+  std_errors <- summary(model)$coefficients[, "Std. Error"]
+  adjusted_r_squared <- summary(model)$adj.r.squared
+  
+  # Combine coefficients, standard errors, and adjusted R-squared into a data.table
+  regression_table <- data.table(Coefficient = coefficients, `Standard Error` = std_errors, `Adjusted R-squared` = adjusted_r_squared)
+  
+  return(regression_table)
+}
+
+# Assuming you have the list of tables 'table_list' available
+# Create an empty list to store the results
+regression_results_list <- list()
+
+# Loop through each table in the 'table_list' and apply the function to compile regression results
+for (data in table_list) {
+  regression_result <- compile_regression_results(data)
+  regression_results_list <- c(regression_results_list, list(regression_result))
+}
+
+# Combine the results for all tables into a single data.table using rbindlist
+final_regression_results <- rbindlist(regression_results_list)
+
+```
+
+```{r regres}
+
+reg_fama <- mom_ret_F12H12 %>% 
+  as.data.table()
+
+reg_fama[, names(reg_fama) := lapply(.SD, function(x) replace(x, x == 0, NA)), .SDcols = names(reg_fama)]
+
+reg_fama <- merge(reg_fama, fama5_data[, .(monthYear, mktrf, rf, smb, hml)],
+                  by = "monthYear", all.x = TRUE)
+
+reg_fama <- reg_fama %>% 
+  mutate(topminusbottom = top20 - bottom20 - rf) %>%
+  as.data.table()
+
+model <- lm(topminusbottom ~ mktrf + smb + hml, data = reg_fama)
+summary(model)
+
+```
+
+```{r reg test}
+
+reg_fama <- mom_ret_F12H12 %>% 
+  as.data.table()
+
+reg_fama[, names(reg_fama) := lapply(.SD, function(x) replace(x, x == 0, NA)), .SDcols = names(reg_fama)]
+
+reg_fama <- merge(reg_fama, fama5_data[, .(monthYear, mktrf, rf, smb, hml)],
+                  by = "monthYear", all.x = TRUE)
+
+reg_fama <- reg_fama %>% 
+  mutate(topminusbottom = top20 - bottom20 - rf) %>%
+  as.data.table()
+
+# Perform one-sample t-test on the 'topminusbottom' variable
+coefficient_test <- t.test(reg_fama$topminusbottom, mu = 0)
+
+# Check the p-value to determine significance
+p_value <- coefficient_test$p.value
+
+# Convert p-value to significance codes
+signif_codes <- symnum(p_value, corr = FALSE, na = FALSE,
+                       cutpoints = c(0, 0.001, 0.01, 0.05, 0.1, 1),
+                       symbols = c("***", "**", "*", ".", " "))
+
+if (p_value < 0.05) {
+  # The 'topminusbottom' variable is significantly different from zero
+  print(paste("The 'topminusbottom' variable is significantly different from zero. Significance code:", signif_codes))
+} else {
+  # The 'topminusbottom' variable is not significantly different from zero
+  print(paste("The 'topminusbottom' variable is not significantly different from zero. Significance code:", signif_codes))
+}
+
+
+```
+
+```{r benchmark}
+
+# Replace NA with zero for mom_ret_F3H6
+mom_ret_F3H6[] <- lapply(mom_ret_F3H6, replace_na_with_zero)
+
+# Replace NA with zero for mom_ret_F3H3
+mom_ret_F3H3[] <- lapply(mom_ret_F3H3, replace_na_with_zero)
+
+# Replace NA with zero for mom_ret_F3H12
+mom_ret_F3H12[] <- lapply(mom_ret_F3H12, replace_na_with_zero)
+
+for (table in table_list) {
+  table[] <- lapply(table, replace_na_with_zero)
+}
+
+generate_cumulative_plot <- function(data) {
+  temp <- data %>%
+    select(monthYear, top20, bottom20) %>% 
+    mutate(momret = top20 - bottom20) %>% 
+    select(-c(top20, bottom20)) %>% 
+    as.data.table()
+
+  temp <- merge(temp, sp_data[, .(monthYear, change)], by = "monthYear", all.x = TRUE)
+
+  # Convert monthYear to a proper date format
+  temp$monthYear <- as.Date(paste0(temp$monthYear, "-25"))
+
+  # Calculate the cumulative performance for each variable
+  temp <- temp %>%
+    arrange(monthYear) %>%
+    mutate(cumulative_change = cumprod(1 + change) * 100,
+           cumulative_momret = cumprod(1 + momret) * 100) %>% 
+    as.data.table()
+
+  # Plot the cumulative performance
+  plot <- ggplot(temp, aes(x = monthYear)) +
+    geom_line(aes(y = cumulative_change, color = "FTSE 100")) +
+    geom_line(aes(y = cumulative_momret, color = "ESG Momentum")) +
+    labs(x = NULL, y = NULL, color = "Variable") +
+    theme_minimal() +
+    guides(color = FALSE) +
+    coord_cartesian(ylim = c(70, 270))  # Set the y-axis limits to [70, 210] #210 for ftse
+
+  return(plot)
+}
+
+
+cum_F3H12 <- generate_cumulative_plot(mom_ret_F3H12)
+cum_F3H3 <- generate_cumulative_plot(mom_ret_F3H3)
+cum_F3H6 <- generate_cumulative_plot(mom_ret_F3H6)
+cum_F6H12 <- generate_cumulative_plot(mom_ret_F6H12)
+cum_F6H3 <- generate_cumulative_plot(mom_ret_F6H3)
+cum_F6H6 <- generate_cumulative_plot(mom_ret_F6H6)
+cum_F12H12 <- generate_cumulative_plot(mom_ret_F12H12)
+cum_F12H3 <- generate_cumulative_plot(mom_ret_F12H3)
+cum_F12H6 <- generate_cumulative_plot(mom_ret_F12H6)
+
+# Combine the plots into a 3x3 grid
+
+grid <- grid.arrange(
+  cum_F3H3, cum_F3H6, cum_F3H12,
+  cum_F6H3, cum_F6H6,cum_F6H12,
+  cum_F12H3, cum_F12H6, cum_F12H12,
+  ncol = 3)
+
+rm(cum_F3H3, cum_F3H6, cum_F3H12,
+   cum_F6H3, cum_F6H6,cum_F6H12,
+   cum_F12H3, cum_F12H6, cum_F12H12)
+
+plot(grid, xlim = c(80, 210), ylim = c(80, 210))
+
+#ggsave("sp.png", plot = grid, width = 12, height = 8, dpi = 300)
+
+```
+```{r end}
+
+
+
+```

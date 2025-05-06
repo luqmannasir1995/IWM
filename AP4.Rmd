@@ -1,0 +1,70 @@
+---
+title: "AP4"
+author: "Luqman Nasir"
+date: "2023-08-03"
+output: pdf_document
+---
+
+```{r summary}
+
+temp <- merged_data %>% 
+  filter(total_esg_score !=0 & environment_score !=0 & social_score !=0 & governance_score !=0) %>%
+  as.data.table()
+
+summary_table <- temp %>%
+  summarise(mean_return = mean(monthly_return, na.rm = TRUE),
+            sd_return = sd(monthly_return, na.rm = TRUE),
+            median_return = median(monthly_return, na.rm = TRUE),
+            min_return = min(monthly_return, na.rm = TRUE),
+            max_return = max(monthly_return, na.rm = TRUE)) %>% 
+  as.data.table()
+
+
+
+```
+
+
+
+
+```{r setup, include=FALSE}
+
+temp <- merged_data %>%
+  select(isin, monthYear, total_esg_score, environment_score, social_score, governance_score, monthly_return) %>%
+  filter(total_esg_score != 0 & !is.na(total_esg_score)) %>%
+  as.data.table()
+
+complete_data <- subset(temp, complete.cases(total_esg_score, environment_score, social_score, governance_score, monthly_return))
+
+temp <- temp %>%
+  group_by(monthYear) %>%
+  summarise(mean_esg_score = mean(total_esg_score, na.rm = T),
+            mean_env_score = mean(environment_score, na.rm = T),
+            mean_soc_score = mean(social_score, na.rm = T),
+            mean_gov_score = mean(governance_score, na.rm = T),
+            mean_monthly_return = mean(monthly_return, na.rm = T)) %>% 
+  mutate(cumulative_return = cumprod(1 + mean_monthly_return)*100) %>% 
+  as.data.table()
+
+temp$date <- as.Date(paste0(temp$monthYear, "-01"))
+
+#write.csv(temp, file = "temp_data.csv", row.names = FALSE)
+
+# Calculate the correlation between total_esg_score and monthly_return
+cor(complete_data$total_esg_score, complete_data$monthly_return)
+cor(complete_data$environment_score, complete_data$monthly_return)
+cor(complete_data$social_score, complete_data$monthly_return)
+cor(complete_data$governance_score, complete_data$monthly_return)
+cor(temp$mean_esg_score, temp$cumulative_return)
+cor(temp$mean_env_score, temp$cumulative_return)
+cor(temp$mean_soc_score, temp$cumulative_return)
+cor(temp$mean_gov_score, temp$cumulative_return)
+
+
+
+```
+
+
+```{r end}
+
+
+```

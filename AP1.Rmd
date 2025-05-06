@@ -1,0 +1,265 @@
+---
+title: |
+  | Applied Project
+author: | 
+  | Name: Luqman Nasir
+  | CID: 02304617
+  | Business School, Imperial College London
+date: "15-08-2023"
+output: pdf_document
+---
+
+\newpage
+
+
+## Load R packages
+
+Loading `knitr`, `dplyr`, `lubridate`, `xts`, and `data.table` to work with the data.
+```{r Load libraries, message=FALSE, warning=FALSE, tidy=TRUE}
+# Load the required library
+
+library(knitr)
+library(dplyr)
+library(dtplyr)
+library(xts)
+library(data.table)
+library(lubridate)
+library(PerformanceAnalytics)
+library(zoo)
+library(purrr)
+library(tidyr)
+library(RcppRoll)
+library(magrittr)
+library(tibble)
+library(ggplot2)
+library(gridExtra)
+library(writexl)
+library(scales)
+library(summarytools)
+
+```
+
+```{r Load prccd dataset, message=FALSE, warning=FALSE, tidy=TRUE}
+
+#dprice_data <- fread('compustat1.csv')
+
+#dprice_data <- subset(dprice_data, !is.na(isin) & isin != "") #!is.na(prccd) & prccd != "" & 
+#length(unique(dprice_data$isin))
+#tail(dprice_data)
+
+## Filtering first and last day of each month
+#dprice_data <- dprice_data %>%
+  #mutate(monthYear = format(datadate, "%Y-%m")) %>% 
+  #ungroup() %>%
+  #as.data.table()
+
+#dprice_data <- dprice_data %>%
+  #group_by(isin, monthYear) %>% 
+  #mutate(first_day_price = first(prccd), last_day_price = last(prccd), monthly_return = (last_day_price - #first_day_price) / first_day_price) %>%
+  #select(-c(first_day_price, last_day_price)) %>% 
+  #as.data.table()
+
+#dprice_data$monthly_return[is.infinite(dprice_data$monthly_return )] <- NA
+#dprice_data$monthly_return[(dprice_data$price == 0 )] <- NA
+#dprice_data$datadate <- as.Date(dprice_data$datadate, format = "%Y-%m-%d", origin = "1970-01-01")
+
+#output_file <- "dprice_data.RData"
+
+#Save the dprice_data dataframe in R's native file format
+#saveRDS(dprice_data, file = output_file)
+
+```
+
+```{r Load ESG dataset, message=FALSE, warning=FALSE, tidy=TRUE}
+
+# Using the fread() function to load the dataset faster
+
+dprice_data <- readRDS("dprice_data.RData")
+
+esg_data1 <- fread('sustain1.csv')
+esg_data1 <- subset(esg_data1, 
+                   Type_Listing == "Public" & !is.na(ISIN) & ISIN != "" & ISIN != "No data")
+
+common_isin_values <- intersect(dprice_data$isin, esg_data1$ISIN)
+
+dprice_data <- dprice_data %>%
+  filter(isin %in% common_isin_values) %>% 
+  as.data.table()
+
+esg_data1 <- esg_data1 %>%
+  mutate(Date = as.Date(Date, format = "%d/%m/%Y")) %>%
+  mutate(Date = format(Date, "%Y-%m-%d")) %>%
+  arrange(Date) %>%
+  as.data.table()
+
+esg_data1 <- esg_data1 %>%
+  mutate(monthYear = format(as.Date(Date), "%Y-%m")) %>%
+  as.data.table()
+
+esg_data1 <- esg_data1 %>%
+  rename(datadate = Date) %>% 
+  as.data.table()
+
+esg_data1$datadate <- as.Date(esg_data1$datadate, format = "%Y-%m-%d", origin = "1970-01-01")
+
+esg_data1 <- esg_data1 %>%
+  group_by(monthYear, ISIN) %>%
+  filter(datadate == max(datadate)) %>%
+  ungroup() %>% 
+  as.data.table()
+
+# Create a sequence of all months from 01 to 12
+months <- sprintf("%02d", 1:12)
+
+# Create a sequence of years from 2007 to 2020
+years <- 2009:2019
+
+# Expand the sequences to match all possible combinations of years and months
+all_dates <- expand.grid(year = years, month = months)
+
+# Create the "monthYear" column by combining the year and month
+all_dates$monthYear <- paste(all_dates$year, all_dates$month, sep = "-")
+
+# Convert the data.frame to a data.table if needed
+all_dates <- all_dates %>% 
+  arrange(monthYear) %>% 
+  as.data.table()
+
+# Get unique isin and monthYear values
+unique_isin <- unique(common_isin_values)
+unique_monthYear <- unique(all_dates$monthYear)
+
+# Create a data frame with all combinations of isin and monthYear
+esg_data2 <- expand.grid(monthYear = unique_monthYear, ISIN = unique_isin) %>% 
+  as.data.table()
+
+esg_data2 <- merge(esg_data2, esg_data1[, .(ISIN, monthYear, total_esg_score, environment_score, social_score, governance_score)],
+                      by = c("ISIN", "monthYear"), all.x = TRUE)
+
+is_duplicate <- duplicated(esg_data2[, c("ISIN", "monthYear")])
+
+# Get the duplicate rows
+duplicate_rows <- esg_data2[is_duplicate, ]
+
+# Print the duplicate rows
+#print(duplicate_rows)
+
+esg_data2 <- esg_data2 %>% 
+  distinct(ISIN, monthYear, .keep_all = TRUE) %>% 
+  as.data.table()
+
+esg_data <- esg_data2 %>% 
+  arrange(monthYear) %>% 
+  group_by(ISIN) %>% 
+  mutate(esg_momentum = total_esg_score - lag(total_esg_score, 1)) %>%
+  mutate(env_momentum = environment_score - lag(environment_score, 1)) %>%
+  mutate(gov_momentum = governance_score - lag(governance_score, 1)) %>%
+  mutate(soc_momentum = social_score - lag(social_score, 1)) %>%
+  ungroup() %>% 
+  as.data.table()
+
+esg_data <- esg_data %>%
+  rename(isin = ISIN) %>% 
+  as.data.table()
+
+sum(esg_data$esg_momentum != 0 & !is.na(esg_data$esg_momentum)) / length(esg_data$esg_momentum)
+length(unique(esg_data$isin))
+tail(esg_data)
+
+rm(all_dates, duplicate_rows, esg_data1, esg_data2)
+rm(is_duplicate, months, common_isin_values, years)
+   
+```
+
+```{r Load fama factors, message=FALSE, warning=FALSE, tidy=TRUE}
+
+fama5_data <- fread('fama5factors.csv')
+
+fama5_data <- fama5_data %>%
+  arrange(dateff) %>%
+  as.data.table()
+
+fama5_data <- fama5_data %>%
+  mutate(monthYear = format(as.Date(dateff), "%Y-%m")) %>%
+  as.data.table()
+
+fama5_data$dateff <- as.Date(fama5_data$dateff, format = "%Y-%m-%d", origin = "1970-01-01")
+
+```
+
+```{r merging data, message=FALSE, warning=FALSE, tidy=TRUE}
+
+merged_data <- merge(esg_data, dprice_data, by = c("isin", "monthYear"))%>% 
+  as.data.table()
+
+temp1 <- dprice_data %>% 
+  group_by(isin, monthYear) %>% 
+  summarise(monthly_return) %>%
+  unique() %>% 
+  as.data.table()
+
+merged_data <- merge(esg_data, temp1[, .(isin, monthYear, monthly_return)],
+                      by = c("isin", "monthYear"), all.x = TRUE)
+
+rm(temp1)
+
+```
+```{r gics, message=FALSE, warning=FALSE, tidy=TRUE}
+
+esg_data1 <- fread('sustain1.csv')
+
+industries <- data.table(gics = unique(esg_data1$Peer_group_root))
+
+gics_lookup <- data.frame(
+  industry = industries$gics,
+  sector = c(
+    "Financials", "Financials", "Communication Services", "Communication Services", "Financials",
+    "Materials", "Utilities", "Industrials", "Materials", "Real Estate", "Consumer Discretionary",
+    "Industrials", "Industrials", "Consumer Discretionary", "Consumer Discretionary", "Consumer Discretionary",
+    "Consumer Discretionary", "Industrials", "Industrials", "Consumer Discretionary", "Consumer Discretionary",
+    "Consumer Staples", "Energy", "Information Technology", "Health Care", "Energy", "Industrials",
+    "Industrials", "Industrials", "Consumer Staples", "Consumer Discretionary", "Energy", "Industrials", "Consumer Discretionary",
+    "Materials", "Materials", "Materials", "Health Care", "Industrials", "Information Technology",
+    "Consumer Staples", "Materials"
+  ),
+  stringsAsFactors = FALSE
+)
+
+gics <- esg_data1 %>% 
+  select(ISIN, Peer_group_root) %>%
+  rename(isin = ISIN, industry = Peer_group_root) %>%  # Rename ISIN column to isin
+  unique() %>%
+  filter(!is.na(isin) & isin !="" & isin !="No data") %>%  # Remove rows with blank isin
+  as.data.table()
+
+gics <- merge(gics, gics_lookup, by = "industry", all.x = TRUE)
+rm(industries, esg_data1, gics_lookup)
+
+#rm(combinations, data1, data2, data3, data4, data5, gooduniverse, gooduniverse_temp, merged1)
+
+```
+
+```{r benchmark, message=FALSE, warning=FALSE, tidy=TRUE}
+
+ftse_data <- fread('ftse100.csv')
+ftse_data <- ftse_data %>%
+  mutate(monthYear = format(as.Date(date), "%Y-%m"),
+         monthYear = lead(monthYear)) %>%
+  as.data.table()
+ftse_data$date <- as.Date(ftse_data$date, format = "%Y-%m-%d", origin = "1970-01-01") %>% 
+  as.data.table()
+
+sp_data <- fread('sp500.csv')
+sp_data <- sp_data %>%
+  mutate(monthYear = format(as.Date(date), "%Y-%m"),
+         monthYear = lead(monthYear)) %>%
+  as.data.table()
+sp_data$date <- as.Date(sp_data$date, format = "%Y-%m-%d", origin = "1970-01-01") %>% 
+  as.data.table()
+
+```
+
+```{r end}
+
+
+```
