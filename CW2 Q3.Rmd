@@ -1,0 +1,60 @@
+---
+title: "CW2"
+author: '02331035'
+date: "2023-02-12"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+
+library(readxl)
+library(dplyr)
+library(data.table)
+
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+
+data <- read_xls("ps2_data.xls")
+
+colnames(data)[4:5] <- c("ret_inc_div", "ret_exc_div")
+
+data <- data %>% 
+  mutate(div_yield = ((1 + ret_inc_div) / (1 + ret_exc_div)) - 1,
+         log_div_yield = log(div_yield),
+         div_growth = div_yield/lag(div_yield, 1) * (1 + ret_exc_div),
+         lead_logret = log(1 + lead(ret_inc_div, 1)),
+         lead_logdy = lead(log_div_yield, 1),
+         lead_logdg = log(lead(div_growth, 1))) %>% 
+  as.data.table()
+
+data1 <- na.omit(data)
+
+dg_dy <- lm(lead_logdg ~ log_div_yield, data = data1)
+ldy_dy <- lm(lead_logdy ~ log_div_yield, data = data1)
+r_dy <- lm(lead_logret ~ log_div_yield, data = data1)
+p <- mean(1/data1$div_yield) / (mean(1/data1$div_yield) + 1) # p = 0.9666094
+
+results <- matrix(NA, 2, 3, dimnames = list(c("lm", "implied"), c("Beta_d", "Beta_y", "Beta_r")))
+results[1,1] <- coef(dg_dy)[2]
+results[1,2] <- coef(ldy_dy)[2]
+results[1,3] <- coef(r_dy)[2]
+results[2,1] <- coef(r_dy)[2] - 1 + (p * coef(ldy_dy)[2])
+results[2,2] <- (1 - coef(r_dy)[2] + coef(dg_dy)[2]) / p
+results[2,3] <- 1 + coef(dg_dy)[2] - (p * coef(ldy_dy)[2])
+
+print(summary(r_dy))
+
+print(round(results, 5))
+
+# The implied value of B_r is rather close to its regression estimate. This suggest that the value of B_d and B_y could closely predict what we observe from running the regression of dividend yields on future returns. 
+
+# Dividend growth is not predictable as value of B_d is close to zero i.e. cashflow channel does not explain the time-variation of dividend yield. We could conclude that most predictability is coming from expected return predictability / time-variation discount rate. 
+
+```

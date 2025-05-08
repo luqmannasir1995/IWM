@@ -1,0 +1,418 @@
+---
+title: |
+  | Asset Allocation and Investment Strategies
+  | Assignment 1
+author: |
+  | Investment & Wealth Management 22/23
+  |
+  | Business School, Imperial College London
+  |
+  | 02304617
+  | 02325071
+  | 02299241
+  | 02280002
+  | 02331035
+  | 
+date: "25 January 2023"
+output: pdf_document
+---
+
+\newpage
+
+
+## Load R packages
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(width = 0.8)
+
+library(readxl)
+library(quadprog)
+library(RColorBrewer)
+library(knitr)
+library(dplyr)
+library(dtplyr)
+library(data.table)
+library(lubridate)
+library(tinytex)
+library(quantmod) 
+library(moments)
+library(tseries)
+library(fBasics)
+library(nortest)
+library(ggplot2)
+
+```
+
+## Load and prepare data
+
+```{r load data}
+
+## Reading the source file
+data <- read_xls("PS1_data.xls", skip = 2)
+colnames(data)[10] <- "remove"
+data <- subset(data, select = -remove)
+data$date <- as.Date(as.character(data$date), format = "%m/%d/%Y")
+
+## Generating log returns
+logReturns <- function(vec) {
+  returns = log(vec / dplyr::lag(vec , 1))
+  return(returns)
+}
+
+annualLogReturns <- function(dailyReturns) {
+  return(exp(dailyReturns * 252) - 1)
+}
+
+for (i in 2:9) {
+  data <- cbind(data, (data[,i] * data[,i+8]))
+}
+
+colnames(data)[(ncol(data)-7):ncol(data)] <- c("USD_TSX", "USD_CAC", 
+                                                "USD_DAX", "USD_Eurostoxx50",
+                                                "USD_NIKKEI225", "USD_FTSE100",
+                                                "USD_SP500", "USD_IBOVESPA")
+
+data$TSX_ret <- logReturns(data$USD_TSX)
+data$CAC_ret <- logReturns(data$USD_CAC)
+data$DAX_ret <- logReturns(data$USD_DAX)
+data$Eurostoxx50_ret <- logReturns(data$USD_Eurostoxx50)
+data$NIKKEI225_ret <- logReturns(data$USD_NIKKEI225)
+data$FTSE100_ret <- logReturns(data$USD_FTSE100)
+data$SP500_ret <- logReturns(data$USD_SP500)
+data$IBOVESPA_ret <- logReturns(data$USD_IBOVESPA)
+
+ret <- data[ ,c(1, (ncol(data)-7):ncol(data))]
+
+## Generating average returns and covariance matrix (daily)
+avg_ret <- ret %>% 
+  select(-date) %>%
+  na.omit() %>% 
+  colMeans()
+  
+sigma <- ret %>%
+  select(-date) %>%
+  na.omit() %>%
+  cov()
+
+```
+
+## Question 1 (Return Statistics)
+
+```{r summary stat, echo = FALSE}
+
+sd <- sqrt(diag(sigma))
+skew <- as.double(skewness((data[ ,c(ncol(data)-7):ncol(data)]), na.rm = TRUE))
+kurt <- as.double(kurtosis((data[ ,c(ncol(data)-7):ncol(data)]), na.rm = TRUE))
+
+summ_stat <- rbind(avg_ret, sd, skew, kurt)
+
+print(round(summ_stat, 3))
+
+corr <- cor(na.omit(data.frame(data$TSX_ret, data$CAC_ret, data$DAX_ret, data$Eurostoxx50_ret, data$NIKKEI225_ret, data$FTSE100_ret, data$SP500_ret, data$IBOVESPA_ret)))
+
+print(round(corr, 3))
+
+auto_correlation <- (cor(na.omit(cbind(data$TSX_ret, data$CAC_ret, data$DAX_ret, data$Eurostoxx50_ret, data$NIKKEI225_ret, data$FTSE100_ret, data$SP500_ret, data$IBOVESPA_ret))))
+
+print(round(auto_correlation, 3))
+
+ad.test(data$TSX_ret)
+ad.test(data$CAC_ret)
+ad.test(data$DAX_ret)
+ad.test(data$Eurostoxx50_ret)
+ad.test(data$NIKKEI225_ret)
+ad.test(data$FTSE100_ret)
+ad.test(data$SP500_ret)
+ad.test(data$IBOVESPA_ret)
+
+```
+### Analysis of the returns
+
+The skewness of the returns are significantly negatively skewed. This indicates that most of the returns lie below the mean return and that there are fewer returns that lie above the mean. This can indicate that investment's that have returns below the mean could be more risky, as there is a higher likelihood of experiencing a loss. The kurtosis is large which indicates that the distribution of returns is "peaked" or "pointy" compared to a normal distribution. This suggests that there are more extreme values in the distribution of returns, either on the high or low end. A large positive kurtosis value indicates that the returns have fat tails. This means that there is a higher likelihood of extreme positive or negative returns. This can indicate that the investment is more risky, as there is a higher likelihood of experiencing large losses or gains. The correlation of returns is also fairly strong as almost all correlations are above 0.5 except for the NIKKEI225 which suggests that the movement of returns of each index moves similar to all other indices in the data frame.
+
+## Question 2.1 (With short-selling)
+
+```{r MV1 With short-selling}
+
+## Generating average returns and covariance matrix (annualized)
+ann_sigma <- sigma*252
+ann_avg_ret <- annualLogReturns(avg_ret)
+
+## The objective function is 1/2 * x' * D * x - d' * x
+
+## With short-selling
+n <- length(ann_avg_ret)
+Dmat <- 2*ann_sigma  # covariance matrix of assets
+dvec <- ann_avg_ret # vector of expected returns
+Amat <- matrix(1, ncol = 1, nrow = n)
+bvec <- 1
+mv.sol1 <- solve.QP(Dmat,
+                    dvec,
+                    Amat, 
+                    bvec, 
+                    meq = 1,
+                    factorized=FALSE)
+
+Dmat <- 2*ann_sigma  # covariance matrix of assets
+dvec <- matrix(0, ncol = 1, nrow = n) # vector of expected returns
+Amat <- matrix(1, ncol = 1, nrow = n)
+bvec <- 1
+mv.sol2 <- solve.QP(Dmat,
+                    dvec,
+                    Amat, 
+                    bvec, 
+                    meq = 1,
+                    factorized=FALSE)
+
+#####################
+
+MVPlot1 <- matrix(0, nrow = 2, ncol = 2)
+colnames(MVPlot1) <- c("SD", "Return")
+rownames(MVPlot1) <- c("MV1", "MV2")
+
+MVPlot1[1,1] <- sqrt(t(mv.sol1$solution) %*% ann_sigma %*% mv.sol1$solution)
+MVPlot1[1,2] <- ann_avg_ret %*% mv.sol1$solution
+
+MVPlot1[2,1] <- sqrt(t(mv.sol2$solution) %*% ann_sigma %*% mv.sol2$solution)
+MVPlot1[2,2] <- ann_avg_ret %*% mv.sol2$solution
+
+MVPlot1 <- data.frame(MVPlot1)
+test_assets <- data.frame(cbind(sqrt(diag(ann_sigma)), ann_avg_ret))
+
+ggplot() +
+  geom_line(data = MVPlot1, aes(x = MVPlot1$SD, y = MVPlot1$Return), color = "red")+
+  geom_point(data = test_assets, 
+             aes(x = test_assets$V1, y = test_assets$ann_avg_ret), color = "blue")+
+  ggtitle("Mean-Variance Efficient Frontier with short-selling")+
+  xlab("Standard Deviation")+
+  ylab("Average Return")
+
+```
+
+## Question 2.2 (Without short-selling)
+
+```{r MV2 Without short-selling}
+
+wmin <- 0.00
+wmax <- 1.00
+Dmat <- 2*ann_sigma  # covariance matrix of assets
+dvec <- ann_avg_ret # vector of expected returns
+A <- rbind(1,-diag(n), diag(n))
+b <- c(1, -rep(wmax, n), rep(wmin, n))
+mv.sol3 <- solve.QP(Dmat,
+                    dvec,
+                    t(A),
+                    b, 
+                    meq = 1,
+                    factorized=FALSE)
+
+dvec <- matrix(0, ncol = 1, nrow = n) # vector of expected returns
+mv.sol4 <- solve.QP(Dmat,
+                    dvec,
+                    t(A),
+                    b, 
+                    meq = 1,
+                    factorized=FALSE)
+
+#####################
+
+MVPlot2 <- matrix(0, nrow = 2, ncol = 2)
+colnames(MVPlot2) <- c("SD", "Return")
+rownames(MVPlot2) <- c("MV1", "MV2")
+
+MVPlot2[1,1] <- sqrt(t(mv.sol3$solution) %*% ann_sigma %*% mv.sol3$solution)
+MVPlot2[1,2] <- ann_avg_ret %*% mv.sol3$solution
+
+MVPlot2[2,1] <- sqrt(t(mv.sol4$solution) %*% ann_sigma %*% mv.sol4$solution)
+MVPlot2[2,2] <- ann_avg_ret %*% mv.sol4$solution
+
+MVPlot2 <- data.frame(MVPlot2)
+
+ggplot() +
+  geom_line(data = MVPlot2, aes(x = MVPlot2$SD, y = MVPlot2$Return), color = "red")+
+  geom_point(data = test_assets, 
+             aes(x = test_assets$V1, y = test_assets$ann_avg_ret), color = "blue")+
+  ggtitle("Mean-Variance Efficient Frontier (without short-selling)")+
+  xlab("Standard Deviation")+
+  ylab("Average Return")
+
+```
+
+## Question 3.1 (5-year With short-selling)
+
+```{r MV3 5-year With short-selling}
+
+calReturns <- function(vec, windowsize) {
+  returns = log(vec / dplyr::lag(vec , windowsize))
+  return(returns)
+}
+
+data$TSX_ret_5Y <- calReturns(data$USD_TSX, 1260)
+data$CAC_ret_5Y <- calReturns(data$USD_CAC, 1260)
+data$DAX_ret_5Y <- calReturns(data$USD_DAX, 1260)
+data$Eurostoxx50_ret_5Y <- calReturns(data$USD_Eurostoxx50, 1260)
+data$NIKKEI225_ret_5Y <- calReturns(data$USD_NIKKEI225, 1260)
+data$FTSE100_ret_5Y <- calReturns(data$USD_FTSE100, 1260)
+data$SP500_ret_5Y <- calReturns(data$USD_SP500, 1260)
+data$IBOVESPA_ret_5Y <- calReturns(data$USD_IBOVESPA, 1260)
+
+ret_5Y <- data[, c(1, (ncol(data)-7):ncol(data))]
+ret_5Y <- subset(ret_5Y, ret_5Y$date >= "2014-12-30")
+
+avg_ret_5Y <- ret_5Y %>%
+  select(-date) %>%
+  na.omit() %>% 
+  colMeans()
+  
+sigma_5Y <- ret_5Y %>%
+  select(-date) %>%
+  na.omit() %>%
+  cov()
+
+## Generating average returns and covariance matrix (annualized)
+ann_sigma_5Y <- sigma_5Y*0.2
+ann_avg_ret_5Y <- exp(avg_ret_5Y * 0.2) - 1
+
+## With short-selling
+Dmat2 <- 2*ann_sigma_5Y  # covariance matrix of assets
+dvec2 <- ann_avg_ret_5Y # vector of expected returns
+Amat <- matrix(1, ncol = 1, nrow = n)
+bvec <- 1
+mv.sol5 <- solve.QP(Dmat2, 
+                    dvec2, 
+                    Amat, 
+                    bvec, 
+                    meq = 1,
+                    factorized=FALSE)
+
+Dmat2 <- 2*ann_sigma_5Y  # covariance matrix of assets
+dvec2 <- matrix(0, ncol = 1, nrow = n) # vector of expected returns
+mv.sol6 <- solve.QP(Dmat2,
+                    dvec2,
+                    Amat, 
+                    bvec, 
+                    meq = 1,
+                    factorized=FALSE)
+
+#####################
+
+MVPlot3 <- matrix(0, nrow = 2, ncol = 2)
+colnames(MVPlot3) <- c("SD", "Return")
+rownames(MVPlot3) <- c("MV1", "MV2")
+
+MVPlot3[1,1] <- sqrt(t(mv.sol5$solution) %*% ann_sigma %*% mv.sol5$solution)
+MVPlot3[1,2] <- ann_avg_ret %*% mv.sol5$solution
+
+MVPlot3[2,1] <- sqrt(t(mv.sol6$solution) %*% ann_sigma %*% mv.sol6$solution)
+MVPlot3[2,2] <- ann_avg_ret %*% mv.sol6$solution
+
+MVPlot3 <- data.frame(MVPlot3)
+
+ggplot() +
+  geom_line(data = MVPlot3, aes(x = MVPlot3$SD, y = MVPlot3$Return), color = "red")+
+  geom_point(data = test_assets, 
+             aes(x = test_assets$V1, y = test_assets$ann_avg_ret), color = "blue")+
+  ggtitle("5-year Mean-Variance Efficient Frontier (with short-selling)")+
+  xlab("Standard Deviation")+
+  ylab("Average Return")
+
+```
+
+## Question 3.2 (5-year without short-selling)
+
+```{r MV4 5-year without short-selling}
+
+wmin <- 0.00
+wmax <- 1.00
+Dmat2 <- 2*ann_sigma_5Y  # covariance matrix of assets
+dvec2 <- ann_avg_ret_5Y # vector of expected returns
+A <- rbind(1,-diag(n), diag(n))
+b <- c(1, -rep(wmax, n), rep(wmin, n))
+mv.sol7 <- solve.QP(Dmat2,
+                    dvec2,
+                    t(A),
+                    b, 
+                    meq = 1,
+                    factorized=FALSE)
+
+dvec2 <- matrix(0, ncol = 1, nrow = n) # vector of expected returns
+mv.sol8 <- solve.QP(Dmat2,
+                    dvec2,
+                    t(A),
+                    b, 
+                    meq = 1,
+                    factorized=FALSE)
+
+#####################
+
+MVPlot4 <- matrix(0, nrow = 2, ncol = 2)
+colnames(MVPlot4) <- c("SD", "Return")
+rownames(MVPlot4) <- c("MV1", "MV2")
+
+MVPlot4[1,1] <- sqrt(t(mv.sol7$solution) %*% ann_sigma %*% mv.sol7$solution)
+MVPlot4[1,2] <- ann_avg_ret %*% mv.sol7$solution
+
+MVPlot4[2,1] <- sqrt(t(mv.sol8$solution) %*% ann_sigma %*% mv.sol8$solution)
+MVPlot4[2,2] <- ann_avg_ret %*% mv.sol8$solution
+
+MVPlot4 <- data.frame(MVPlot4)
+
+ggplot() +
+  geom_line(data = MVPlot4, aes(x = MVPlot4$SD, y = MVPlot4$Return), color = "red")+
+  geom_point(data = test_assets, 
+             aes(x = test_assets$V1, y = test_assets$ann_avg_ret), color = "blue")+
+  ggtitle("5-year Mean-Variance Efficient Frontier (without short-selling)")+
+  xlab("Standard Deviation")+
+  ylab("Average Return")
+
+```
+
+## Question 3.3 (Comparing with Market cap-based weights)
+
+```{r Market cap-based weights, echo = FALSE}
+
+market_cap <- read_xls("PS1_data.xls", skip = 1, sheet = 2)
+for(i in 1:8){
+  colnames(market_cap)[i] <- colnames(data)[i+1]
+}
+
+weights <- data.frame(rbind(mv.sol1$solution, mv.sol2$solution,
+                            mv.sol3$solution, mv.sol4$solution,
+                            mv.sol5$solution, mv.sol6$solution,
+                            mv.sol7$solution, mv.sol8$solution,
+                            market_cap))
+
+rownames(weights)[1] <- "MV1_TP"
+rownames(weights)[2] <- "MV1_MV"
+rownames(weights)[3] <- "MV2_TP"
+rownames(weights)[4] <- "MV2_MV"
+rownames(weights)[5] <- "MV3_TP"
+rownames(weights)[6] <- "MV3_MV"
+rownames(weights)[7] <- "MV4_TP"
+rownames(weights)[8] <- "MV4_MV"
+rownames(weights)[9] <- "MktCap"
+
+for(i in 1:8){
+  colnames(weights)[i] <- colnames(data)[i+1]
+}
+
+print(round(weights, 3))
+
+```
+*MV1 - with short-selling*
+
+*MV2 - without short-selling*
+
+*MV3 - 5-year with short-selling*
+
+*MV4 - 5-year without short-selling*
+
+*TP - Tangency Portfolio*
+
+*MV - Minimum Variance Portfolio*
+
+### Weight Comparison
+
+Our weights when using the 5-year rolling return has significant overweights on the S&P500 index which is similar to the market-cap based weights. This is especially true when we observe the weights of tangency portfolios (e.g. MV4_TP) which have allocated solely into the S&P500. 
+
+However, the opposite trend is seen when we observe EuroStoxx50 Index. Our optimized weights heavily short/underweights the EuroStoxx50, whereas the market-based weights has put a rather significant weight of 9.0%.
