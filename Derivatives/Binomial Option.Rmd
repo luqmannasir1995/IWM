@@ -1,0 +1,104 @@
+---
+title: "BinomTree"
+author: '02331035'
+date: "2023-01-29"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+
+```{r binomial tree}
+
+build_stock_tree <- function(S, sigma, delta_t, N) {
+  tree = matrix(0, nrow=N+1, ncol=N+1)
+  U = exp(sigma*sqrt(delta_t))
+  D = exp(-sigma*sqrt(delta_t))
+  for (i in 1:(N+1)) {
+    for (j in 1:i) {
+      tree[i, j] = S * U^(j-1) * D^((i-1)-(j-1))
+    }  }
+  return(tree)
+}
+
+S <- 40 # Price at time = 0
+sigma <- 0.3 # Volatility of the stock
+N <- 10 # How many period per year
+delta_t <- 1/(N*2) # Depends on the period per branch (3m, 6m, 1y, etc.)
+r <- 0.04 # Risk-free rate
+
+tree <- build_stock_tree(S, sigma, delta_t, N)
+
+K <- 40 # Strike price
+IntrinsecValue <- tree[c(N+1),] - K 
+IntrinsecValue[IntrinsecValue<0] <- 0 # matrix of max(St - K, 0)
+
+q_prob <- function(r, delta_t, sigma) {
+  u = exp(sigma*sqrt(delta_t))
+  d = exp(-sigma*sqrt(delta_t))
+    return((exp(r*delta_t) - d)/(u-d))
+}
+
+value_binomial_option_eu <- function(tree, sigma, delta_t, r, K, type) {
+  q = q_prob(r, delta_t, sigma)
+  option_tree = matrix(0, nrow=nrow(tree), ncol=ncol(tree))
+  if(type == 'put') {
+    option_tree[nrow(option_tree),] = pmax(K - tree[nrow(tree),], 0)
+  } else {option_tree[nrow(option_tree),] = pmax(tree[nrow(tree),] - K, 0)
+  }
+  for (i in (nrow(tree)-1):1) {
+    for(j in 1:i) {
+     option_tree[i,j]=((1-q)*option_tree[i+1,j] + q*option_tree[i+1,j+1])/exp(r*delta_t)
+    }
+  }
+  return(option_tree)
+}
+
+eu_call_price <- value_binomial_option_eu(tree, sigma, delta_t, r, K, "call")[1,1]
+
+# American call option
+dt <- delta_t
+u <- exp(sigma*sqrt(delta_t))
+d <- 1/u
+p <- (exp(r*delta_t) - d)/(u-d)
+ 
+value_binomial_option_am <- function(N, sigma, delta_t, r, K, type) {
+  payoff <- matrix(0, nrow = N+1, ncol = N+1)
+  if(type == 'call') {
+    for (j in 0:N) {
+      payoff[N+1,j+1] <- max(S*(u^j)*d^(N-j) - K, 0)
+    }
+    for (i in (N-1):0) {
+      for (j in 0:i) {
+        payoff[i+1,j+1] <- max(exp(-r*delta_t)*(p*payoff[i+2,j+2] + (1-p)*payoff[i+2,j+1]), S*(u^j)*d^(i-j) - K)
+      }
+    }
+  } else {
+    for (j in 0:N) {
+      payoff[N+1,j+1] <- max(K - S*(u^j)*d^(N-j), 0)
+    }
+    for (i in (N-1):0) {
+      for (j in 0:i) {
+        payoff[i+1,j+1] <- max(exp(-r*delta_t)*(p*payoff[i+2,j+2] + (1-p)*payoff[i+2,j+1]), K - S*(u^j)*d^(i-j))
+      }
+    }
+  }
+  return(payoff[1,1])
+}
+
+round(value_binomial_option_eu(tree, sigma, delta_t, r, K, "call")[1,1],5)
+value_binomial_option_am(N, sigma, delta_t, r, K, "put")
+
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
