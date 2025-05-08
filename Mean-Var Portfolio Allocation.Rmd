@@ -1,19 +1,7 @@
 ---
-title: |
-  | Asset Allocation and Investment Strategies
-  | Assignment 1
-author: |
-  | Investment & Wealth Management 22/23
-  |
-  | Business School, Imperial College London
-  |
-  | 02304617
-  | 02325071
-  | 02299241
-  | 02280002
-  | 02331035
-  | 
-date: "25 January 2023"
+title:
+author:
+date:
 output: pdf_document
 ---
 
